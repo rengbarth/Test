@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Create a hover effect</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+
+        /*the container must be positioned relative:*/
+        .autocomplete {
+            position: absolute;
+            display: inline-block;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+        }
+
+        input {
+            border: 1px solid transparent;
+            background-color: #f1f1f1;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        input[type=text] {
+            background-color: #f1f1f1;
+            width: 100%;
+        }
+
+        input[type=submit] {
+            background-color: DodgerBlue;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .autocomplete-items {
+            position: absolute;
+            border: 1px solid #d4d4d4;
+            border-bottom: none;
+            border-top: none;
+            z-index: 99;
+            /*position the autocomplete items to be the same width as the container:*/
+            top: 100%;
+            left: 0;
+            right: 0;
+        }
+
+        .autocomplete-items div {
+            padding: 10px;
+            cursor: pointer;
+            background-color: #fff;
+            border-bottom: 1px solid #d4d4d4;
+        }
+
+        /*when hovering an item:*/
+        .autocomplete-items div:hover {
+            background-color: #e9e9e9;
+        }
+
+        /*when navigating through the items using the arrow keys:*/
+        .autocomplete-active {
+            background-color: DodgerBlue !important;
+            color: #ffffff;
+        }
+
+        .popup {
+            min-width: 350px;
+        }
+
+        .map-popup-footer-button {
+            border: 1px solid #2271b1;
+            background: #2271b1;
+            color: #FFFFFF;
+            padding: 5px 10px;
+            text-decoration: none;
+            text-shadow: none;
+            cursor: pointer;
+        }
+
+        .county {
+            font-size: 1rem;
+
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="autocomplete" style="width:300px;">
+        <input id="myInput" type="text" name="myCountry" placeholder="Search by County">
+    </div>
+    <div id="map"></div>
+    <script>
+
+        const csvData = [];
+        mapboxgl.accessToken = 'pk.eyJ1Ijoic2VyZ2JlciIsImEiOiJja3dwOWgzeGQwYWdyMm9xb2pkMDFvYmNuIn0.H9AJ_NLmDNYMed6dvu_Q0A';
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: { version: 8, sources: {}, layers: [] },
+            center: { lng: -100.02197777952688, lat: 30.523331150260873 },
+            zoom: 5.6
+        });
+        let hoveredStateId = null;
+
+        const colors = [
+            ["#e26567", ['141']],
+            ["#fdc287", ['229', '109', '243', '377', '043', '371']],
+            ["#f8c3d4", ['381', '111', '421', '195', '357', '295', '211', '393', '233', '341', '205', '359', '375', '065', '179', '483', '087', '129', '011', '117', '191']],
+            ["#8fc0bb", ['369', '069', '437', '045', '345', '153', '189', '279', '017']],
+            ["#847b7a", ['079', '219', '303', '107', '305']],
+            ["#fdc287", ['135', '329']],
+            ["#95d387", ['443', '461', '173', '103', '475', '495', '301', '389', '263', '151', '353', '399', '335', '227', '317', '003', '165', '115', '033', '415', '445', '501', '169']],
+            ["#b585a8", ['105', '383', '235', '431', '081', '451', '095']],
+            ["#e16466", ['061', '489', '215']],
+            ["#67a85e", ['247', '427', '505', '479']],
+            ["#d9baac", ['323', '507', '127', '163', '283', '013', '311', '493', '255']],
+            ["#f1973d", ['355']],
+            ["#d57d9d", ['029']],
+            ["#a7cee8", ['091', '209', '031', '259', '171', '299', '319', '327', '267', '265', '019', '325', '463', '271', '385', '137', '435', '413', '465']],
+            ["#f0d170", ['453']],
+            ["#f1973d", ['053', '491', '287', '149', '021', '055', '187', '177']],
+            ["#fda4a1", ['007', '409', '025', '297', '249', '131', '047', '273', '261']],
+            ["#5c83ac", ['285', '239', '057', '391', '175', '469', '123']],
+            ["#d6accb", ['133', '093', '333', '411', '307', '049', '083']],
+            ["#a4816d", ['441', '429', '417', '253', '059']],
+            ["#beb5b2", ['473', '015', '157', '089', '481', '321']],
+            ["#58a09c", ['039', '167']],
+            ["#f8c3d4", ['289', '313', '185', '477', '041', '051', '395']],
+            ["#8fc0bb", ['331', '027', '099', '193', '281']],
+            ["#b484a7", ['201']],
+            ["#a7cee8", ['071', '245', '361', '199']],
+            ["#95d387", ['291', '339', '471']],
+            ["#d57d9d", ['225', '005', '347', '419', '405', '403', '351', '241', '457', '373', '407', '455']],
+            ["#fdc287", ['073', '001']],
+            ["#e26567", ['217', '035', '309', '293', '145', '161']],
+            ["#67a85e", ['379', '499', '423', '467', '213']],
+            ["#d9baac", ['067', '037', '387', '315', '459', '183', '203', '401', '365']],
+            ["#beb5b2", ['397', '349', '139', '257', '231', '223', '119', '277', '159', '449', '343', '063']],
+            ["#fdc287", ['097', '181', '147']],
+            ["#bba13f", ['363', '367', '143', '221', '425', '251']],
+            ["#5c83ac", ['113']],
+            ["#d5abca", ['439']],
+            ["#a7cee8", ['085']],
+            ["#a4816d", ['121']],
+            ["#f0d170", ['497', '337', '077', '237', '503', '009', '485', '487', '023', '447', '207', '269', '275', '155', '197', '075', '101', '125', '433']],
+        ]
+
+        map.on('load', () => {
+
+            d3.csv("data/VMHD Coverage Sheet - Jul 6 2022 - URLs (1).csv")
+                .then(json => {
+                    console.log('json', json);
+                    csvData.push(...json)
+                    autocomplete(document.getElementById("myInput"), csvData);
+                })
+
+            fetch('data/texasCounties.json')
+                .then(data => data.json())
+                .then(json => {
+                    json.features.forEach((poly, key) => {
+                        const color = colors.filter(c => c[1].includes(poly.properties.COUNTY))
+                        poly.id = key
+                        poly.properties.color = color.length > 0 ? color[0][0] : "#f0f"
+                    })
+                    map.getSource("states").setData(json)
+                })
+
+
+
+            // map.addSource('texas', {
+            //     'type': 'geojson',
+            //     'data': 'data/texas mask.geojson'
+            // });
+
+            // // The feature-state dependent fill-opacity expression will render the hover effect
+            // // when a feature's hover state is set to true.
+            // map.addLayer({
+            //     'id': 'texas-fills',
+            //     'type': 'fill',
+            //     'source': 'texas',
+            //     'layout': {},
+            //     'paint': {
+            //         'fill-color': '#75cff0',
+            //         'fill-opacity': 1
+            //     }
+            // });
+
+
+            map.addSource('states', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'FeatureCollection',
+                    'features': []
+                }
+            });
+
+            // The feature-state dependent fill-opacity expression will render the hover effect
+            // when a feature's hover state is set to true.
+            map.addLayer({
+                'id': 'state-fills',
+                'type': 'fill',
+                'source': 'states',
+                'layout': {},
+                'paint': {
+                    'fill-color': ['get', 'color'],
+                    'fill-opacity': [
+                        'case',
+                        ['boolean', ['feature-state', 'hover'], false],
+                        1,
+                        0.8
+                    ]
+                }
+            });
+
+            map.addLayer({
+                'id': 'state-borders',
+                'type': 'line',
+                'source': 'states',
+                'layout': {},
+                'paint': {
+                    'line-color': '#627BC1',
+                    'line-width': [
+                        'case',
+                        ['boolean', ['feature-state', 'hover'], false],
+                        4,
+                        0.5
+                    ]
+                }
+            });
+
+            // When the user moves their mouse over the state-fill layer, we'll update the
+            // feature state for the feature under the mouse.
+            const c = []
+            map.on('click', 'state-fills', (e) => {
+                console.log('', e.features[0]);
+
+                //get geometry and find if a we have a marker from CSV inside  that area
+                const geometry = e.features[0].geometry
+                const data = csvData.find(pin => {
+                    // const [Latitude, Longitude] = pin['Longitude/Latitude'].split(",")
+                    // if (!Latitude || !Longitude) return false;
+                    // const point = turf.point([+Longitude, +Latitude]);
+                    // return turf.booleanContains(geometry, point);
+                    console.log('pin.county', pin.County);
+                    console.log('pin.e.features[0].properties.County', e.features[0].properties.NAME);
+                    return pin.County === e.features[0].properties.NAME
+                })
+
+                if (data) {
+                    const [Latitude, Longitude] = data['Longitude/Latitude'].split(",")
+
+                    new mapboxgl.Popup({
+                        closeOnClick: true,
+                        className: "popup"
+                    })
+                        .setLngLat([+Longitude, +Latitude])
+                        .setHTML(description(data))
+                        .addTo(map);
+
+                    map.flyTo({
+                        center: [+Longitude, +Latitude],
+
+                        // pitch: 50
+                    })
+                }
+
+            })
+
+
+            map.on('mousemove', 'state-fills', (e) => {
+                if (e.features.length > 0) {
+                    if (hoveredStateId !== null) {
+                        map.setFeatureState(
+                            { source: 'states', id: hoveredStateId },
+                            { hover: false }
+                        );
+                    }
+                    hoveredStateId = e.features[0].id;
+                    map.setFeatureState(
+                        { source: 'states', id: hoveredStateId },
+                        { hover: true }
+                    );
+                }
+                map.getCanvas().style.cursor = 'pointer';
+
+            });
+
+            // When the mouse leaves the state-fill layer, update the feature state of the
+            // previously hovered feature.
+            map.on('mouseleave', 'state-fills', () => {
+                if (hoveredStateId !== null) {
+                    map.setFeatureState(
+                        { source: 'states', id: hoveredStateId },
+                        { hover: false }
+                    );
+                }
+                hoveredStateId = null;
+                map.getCanvas().style.cursor = '';
+            });
+        });
+
+        function description(data) {
+            console.log('data', data);
+            const county = csvData.filter(i => i["Zip Code"] === data["Zip Code"]).map(i => i.County).join(", ");
+            const description = `
+                <h1>${data['Center Name']}</h1>
+                <table>
+                    <tr>
+                        <td>Coverage&nbsp;Area:</td>
+                        <td>${data['Coverage Area']}</td>
+                    </tr>
+                    <tr>
+                        <td>PSC:</td>
+                        <td>${data['Peer Service Coordinator']}</td>
+                    </tr>
+                    <tr>
+                        <td>Email:</td>
+                        <td>
+                            <a href="mailto:${data["Email"]}">${data["Email"]}</a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Phone Number:</td>
+                        <td>
+                            <a href="${data["Phone Number"]}">${data["Phone Number"]}</a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Address:</td>
+                        <td>${data["Address"]}</td>
+                    </tr>
+                    <tr>
+                        <td>Zip Code:</td>
+                        <td>${data["Zip Code"]}</td>
+                    </tr>
+                    <tr>
+                        <td>County:</td>
+                        <td class="county">${county}</td>
+                    </tr>
+                </table>
+                <button class="map-popup-footer-button" onclick="window.open('${data['Location URL']}', '_blank');">
+                  Directions
+                </button>
+            `
+            return description
+        }
+
+
+        function autocomplete(inp, data) {
+            /*the autocomplete function takes two arguments,
+                        the text field element and an array of possible autocompleted values:*/
+            var currentFocus;
+            /*execute a function when someone writes in the text field:*/
+            inp.addEventListener("input", function (e) {
+                var a, b, i, val = this.value;
+                /*close any already open lists of autocompleted values*/
+                closeAllLists();
+                if (!val) { return false; }
+                currentFocus = -1;
+                /*create a DIV element that will contain the items (values):*/
+                a = document.createElement("DIV");
+                a.setAttribute("id", this.id + "autocomplete-list");
+                a.setAttribute("class", "autocomplete-items");
+                /*append the DIV element as a child of the autocomplete container:*/
+                this.parentNode.appendChild(a);
+
+                const arr = data.map((i, key) => {
+                    return {
+                        index: key,
+                        text: `${i['County']} ${i['Zip Code']}`
+                    }
+                })
+
+                let counter = 0;
+
+                /*for each item in the array...*/
+                for (i = 0; i < arr.length; i++) {
+
+                    /*check if the item starts with the same letters as the text field value:*/
+                    //if (arr[i].substr(0, val.length).toUpperCase() == val.toUpperCase()) {
+
+                    const search = arr[i].text.toUpperCase().search(val.toUpperCase())
+                    if (search > -1) {
+                        /*create a DIV element for each matching element:*/
+                        b = document.createElement("DIV");
+                        /*make the matching letters bold:*/
+
+                        const text = arr[i].text.substr(0, search) + '<b>' + arr[i].text.substr(search, val.length) + '</b>' + arr[i].text.substr((search + val.length), arr[i].text.length)
+
+                        b.innerHTML = text
+                        /*insert a input field that will hold the current array item's value:*/
+                        b.innerHTML += "<input type='hidden' id=" + arr[i].index + " value='" + arr[i].text + "'>";
+                        /*execute a function when someone clicks on the item value (DIV element):*/
+                        b.addEventListener("click", function (e) {
+                            /*insert the value for the autocomplete text field:*/
+                            inp.value = this.getElementsByTagName("input")[0].value.replaceAll('<br>', ' ');
+                            const index = this.getElementsByTagName("input")[0].id;
+                            /*close the list of autocompleted values,
+                            (or any other open lists of autocompleted values:*/
+                            closeAllLists();
+
+                            const point = data[index]
+
+                            if (point) {
+
+                                const [Latitude, Longitude] = point['Longitude/Latitude'].split(",")
+                                const coords = [+Longitude, +Latitude];
+                                const points = turf.point(coords);
+
+                                map.flyTo({
+                                    center: [+Longitude, +Latitude],
+                                    zoom: 9,
+                                    // pitch: 50
+                                })
+
+                                new mapboxgl.Popup({
+                                    closeOnClick: true,
+                                    className: "popup"
+                                })
+                                    .setLngLat(coords)
+                                    .setHTML(description(point))
+                                    .addTo(map);
+
+                                // map.setFilter('labels', [
+                                //     'match',
+                                //     ['get', 'bygningsnavn'],
+                                //     inp.value,
+                                //     true,
+                                //     false
+                                // ])
+                                // map.setFilter('selected', [
+                                //     'match',
+                                //     ['get', 'bygningsnavn'],
+                                //     inp.value,
+                                //     true,
+                                //     false
+                                // ])
+
+                                // map.once("idle", () => {
+                                //     console.log('done');
+                                //     var mapBounds = map.getBounds()
+                                //     const query = map.queryRenderedFeatures([map.project(mapBounds.getSouthWest()), map.project(mapBounds.getNorthEast())], { layers: ['pins'] });
+
+                                //     const names = [...new Set(query.map(i => i.properties.bygningsnavn))]
+
+                                //     console.log('names', names);
+                                //     map.setFilter('labels', [
+                                //         'match',
+                                //         ['get', 'bygningsnavn'],
+                                //         names,
+                                //         true,
+                                //         false
+                                //     ])
+                                // })
+                            }
+
+                        });
+                        if (counter > 20) return; // display first 20 results
+                        a.appendChild(b);
+                        counter++;
+                    }
+                }
+            });
+            /*execute a function presses a key on the keyboard:*/
+            inp.addEventListener("keydown", function (e) {
+                var x = document.getElementById(this.id + "autocomplete-list");
+                if (x) x = x.getElementsByTagName("div");
+                if (e.keyCode == 40) {
+                    /*If the arrow DOWN key is pressed,
+                    increase the currentFocus variable:*/
+                    currentFocus++;
+                    /*and and make the current item more visible:*/
+                    addActive(x);
+                } else if (e.keyCode == 38) { //up
+                    /*If the arrow UP key is pressed,
+                    decrease the currentFocus variable:*/
+                    currentFocus--;
+                    /*and and make the current item more visible:*/
+                    addActive(x);
+                } else if (e.keyCode == 13) {
+                    /*If the ENTER key is pressed, prevent the form from being submitted,*/
+                    e.preventDefault();
+                    if (currentFocus > -1) {
+                        /*and simulate a click on the "active" item:*/
+                        if (x) x[currentFocus].click();
+                    }
+                }
+            });
+            function addActive(x) {
+                /*a function to classify an item as "active":*/
+                if (!x) return false;
+                /*start by removing the "active" class on all items:*/
+                removeActive(x);
+                if (currentFocus >= x.length) currentFocus = 0;
+                if (currentFocus < 0) currentFocus = (x.length - 1);
+                /*add class "autocomplete-active":*/
+                x[currentFocus].classList.add("autocomplete-active");
+            }
+            function removeActive(x) {
+                /*a function to remove the "active" class from all autocomplete items:*/
+                for (var i = 0; i < x.length; i++) {
+                    x[i].classList.remove("autocomplete-active");
+                }
+            }
+            function closeAllLists(elmnt) {
+                /*close all autocomplete lists in the document,
+                            except the one passed as an argument:*/
+                var x = document.getElementsByClassName("autocomplete-items");
+                for (var i = 0; i < x.length; i++) {
+                    if (elmnt != x[i] && elmnt != inp) {
+                        x[i].parentNode.removeChild(x[i]);
+                    }
+                }
+            }
+            /*execute a function when someone clicks in the document:*/
+            document.addEventListener("click", function (e) {
+                closeAllLists(e.target);
+            });
+        }
+
+    </script>
+
+</body>
+
+</html>
